@@ -1,0 +1,7 @@
+mod 'released',
+  git: 'https://github.com/example/released',
+  commit: '999b265735d047ea691819533d64026f20cda31d'
+
+mod 'unreleased',
+  git: 'https://github.com/example/unreleased',
+  commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'

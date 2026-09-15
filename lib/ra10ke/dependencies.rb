@@ -38,12 +38,25 @@ module Ra10ke::Dependencies
       puppetfile.load!
     end
 
+    UNKNOWN_REF = 'undef (tags do not follow any known pattern)'.freeze
+
+    # newest of the given tags according to the registered version formats
+    def latest_of(tags)
+      latest = nil
+      self.class.version_formats.detect { |_, block| latest = block.call(tags) }
+      latest
+    end
+
     def get_latest_ref(remote_refs)
-      tags = remote_refs['tags'].keys
-      latest_ref = nil
-      self.class.version_formats.detect { |_, block| latest_ref = block.call(tags) }
-      latest_ref = 'undef (tags do not follow any known pattern)' if latest_ref.nil?
-      latest_ref
+      latest_of(remote_refs['tags'].keys) || UNKNOWN_REF
+    end
+
+    # annotated tags need the peeled "^{}" ref to match a commit sha
+    def tag_for_sha(remote_refs, sha)
+      names = remote_refs['tags'].select { |_name, value| value[:sha] == sha }.keys
+      names = names.map { |name| name.delete_suffix('^{}') }.uniq
+      # a commit can carry several tags; the newest is the release it represents
+      latest_of(names) || names.sort.last
     end
 
     def ignored_modules
@@ -98,9 +111,17 @@ module Ra10ke::Dependencies
               # Ra10ke::Dependencies.register_version_format(:name, &block)
               latest_ref = get_latest_ref(remote_refs)
             elsif /^[a-z0-9]{40}$/.match?(ref)
-              ref = ref.slice(0, 8)
-              # for sha just assume head should be tracked
-              latest_ref = remote_refs['head'][:sha].slice(0, 8)
+              tag = tag_for_sha(remote_refs, ref)
+              latest_tag = tag ? get_latest_ref(remote_refs) : UNKNOWN_REF
+              if latest_tag == UNKNOWN_REF
+                ref = ref.slice(0, 8)
+                # for sha just assume head should be tracked
+                latest_ref = remote_refs['head'][:sha].slice(0, 8)
+              else
+                # a sha pinning a release tracks releases, not head
+                ref = tag
+                latest_ref = latest_tag
+              end
             else
               raise "Unable to determine ref type for #{puppet_module.title}"
             end
