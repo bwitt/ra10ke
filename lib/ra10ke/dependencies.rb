@@ -39,11 +39,45 @@ module Ra10ke::Dependencies
     end
 
     def get_latest_ref(remote_refs)
-      tags = remote_refs['tags'].keys
+      latest_tag(remote_refs) || 'undef (tags do not follow any known pattern)'
+    end
+
+    # @return [String] the latest tag, nil if no tag follows a known version format
+    def latest_tag(remote_refs)
+      tags = remote_refs['tags'].keys.reject { |tag| tag.end_with?('^{}') }
       latest_ref = nil
       self.class.version_formats.detect { |_, block| latest_ref = block.call(tags) }
-      latest_ref = 'undef (tags do not follow any known pattern)' if latest_ref.nil?
       latest_ref
+    end
+
+    # @return [Hash] tag name => commit sha, using the peeled commit of annotated tags
+    def tag_commits(remote_refs)
+      tags = remote_refs['tags']
+      tags.each_with_object({}) do |(name, info), commits|
+        next if name.end_with?('^{}')
+
+        commits[name] = tags.dig("#{name}^{}", :sha) || info[:sha]
+      end
+    end
+
+    # @summary compares a commit sha to the latest tag if the sha is tagged, otherwise to HEAD
+    # @return [Hash] :installed and :latest short shas with tag names, and :current
+    def get_latest_commit(sha, remote_refs)
+      commits = tag_commits(remote_refs)
+      latest = latest_tag(remote_refs)
+      installed = sha.slice(0, 8)
+      if latest && commits.value?(sha)
+        latest_sha = commits[latest].slice(0, 8)
+        installed_tag = (commits[latest] == sha) ? latest : commits.key(sha)
+        {
+          installed: "#{installed} (#{installed_tag})",
+          latest: "#{latest_sha} (#{latest})",
+          current: installed == latest_sha,
+        }
+      else
+        latest_sha = remote_refs['head'][:sha].slice(0, 8)
+        { installed: installed, latest: latest_sha, current: installed == latest_sha }
+      end
     end
 
     def ignored_modules
@@ -97,10 +131,13 @@ module Ra10ke::Dependencies
               # register own version formats with
               # Ra10ke::Dependencies.register_version_format(:name, &block)
               latest_ref = get_latest_ref(remote_refs)
+              current = ref == latest_ref
             elsif /^[a-z0-9]{40}$/.match?(ref)
-              ref = ref.slice(0, 8)
-              # for sha just assume head should be tracked
-              latest_ref = remote_refs['head'][:sha].slice(0, 8)
+              # track the latest tag if the sha is tagged, otherwise head
+              commit = get_latest_commit(ref, remote_refs)
+              ref = commit[:installed]
+              latest_ref = commit[:latest]
+              current = commit[:current]
             else
               raise "Unable to determine ref type for #{puppet_module.title}"
             end
@@ -109,7 +146,7 @@ module Ra10ke::Dependencies
               installed: ref,
               latest: latest_ref,
               type: 'git',
-              message: (ref == latest_ref) ? :current : :outdated,
+              message: current ? :current : :outdated,
             }
 
           end

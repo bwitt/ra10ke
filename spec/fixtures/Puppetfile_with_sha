@@ -1,0 +1,15 @@
+mod 'old_tag',
+  git: 'https://github.com/example/old_tag',
+  ref: '1111111111111111111111111111111111111111'
+
+mod 'latest_tag',
+  git: 'https://github.com/example/latest_tag',
+  ref: '3333333333333333333333333333333333333333'
+
+mod 'untagged',
+  git: 'https://github.com/example/untagged',
+  ref: '2222222222222222222222222222222222222222'
+
+mod 'tag',
+  git: 'https://github.com/example/tag',
+  ref: 'v1.0.0'
